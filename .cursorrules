@@ -1,0 +1,71 @@
+# Quy chuẩn Dự án: Web Quản lý Chi tiêu Gia đình (NestJS + Next.js + Docker)
+
+## Tổng quan Dự án & Công nghệ
+- **Mục đích:** Ứng dụng web quản lý chi tiêu gia đình, tự động đồng bộ dữ liệu sang Google Sheet.
+- **Backend:** NestJS (TypeScript, Node.js)
+- **Frontend:** Next.js 14+ (App Router, TypeScript)
+- **Database:** PostgreSQL kết hợp Prisma ORM
+- **Môi trường:** Docker & Docker Compose (Containerized Dev & Production)
+- **Giao diện & Biểu đồ:** Tailwind CSS, Shadcn UI, Recharts (dùng cho trang thống kê)
+- **Tích hợp bên ngoài:** Google Sheets API (thư viện `googleapis`), Xác thực JWT (Passport.js)
+
+---
+
+## Quy tắc Lập trình Chung
+- Tuyệt đối dùng **TypeScript chuẩn**. KHÔNG sử dụng kiểu `any`. Phải định nghĩa đầy đủ DTO, Interface và Type.
+- Phong cách code: Clean Code, mô-đun hóa, hàm ngắn gọn đơn chức năng (SRP).
+- Đặt tên biến, hàm và class bằng tiếng Anh rõ nghĩa (Ví dụ: `createExpense`, `getUserProfile`).
+
+---
+
+## Quy chuẩn Docker & Môi trường Container (MỚI)
+1. **Kiến trúc Docker Compose (`docker-compose.yml`):**
+   - Định nghĩa rõ ràng các service: `backend` (NestJS), `frontend` (Next.js), và `db` (PostgreSQL).
+   - Thiết lập `healthcheck` cho service `db` để đảm bảo PostgreSQL khởi động xong hoàn toàn trước khi `backend` chạy (tránh lỗi kết nối DB khi khởi động).
+   - Dùng **Docker Volume** để lưu trữ dữ liệu bền vững cho PostgreSQL (`postgres_data`).
+   - Sử dụng **Docker Network** riêng biệt (`expense_net`) để các container giao tiếp nội bộ an toàn.
+
+2. **Quy chuẩn Dockerfile:**
+   - **Multi-stage Build:** Luôn viết Dockerfile dạng Multi-stage (Build stage & Production stage) để tối ưu hóa kích thước image, giảm thời gian build và tăng tính bảo mật.
+   - **Node.js Base Image:** Dùng các bản nhẹ như `node:20-alpine` hoặc `node:20-slim`.
+   - **Tối ưu Cache Layer:** Copy `package.json` và `package-lock.json` để chạy `npm install` trước, sau đó mới copy mã nguồn dự án.
+   - **Bảo mật Container:** Tránh chạy container bằng quyền `root` ở stage cuối (dùng user `node` sẵn có trong Alpine/Slim).
+
+3. **Quản lý Cấu hình & Biến môi trường:**
+   - Sử dụng file `.env.example` để làm mẫu các biến môi trường cho Docker.
+   - Khi chạy ở môi trường Docker, biến `DATABASE_URL` trong NestJS phải trỏ đến hostname của service DB trong compose (Ví dụ: `postgresql://user:pass@db:5432/expensedb`).
+
+---
+
+## Quy chuẩn Backend (NestJS)
+1. **Cấu trúc Mô-đun:** Tách biệt rõ ràng các module (`AuthModule`, `ExpenseModule`, `GoogleSheetsModule`, `UsersModule`).
+2. **DTO & Validation:**
+   - Luôn kiểm tra dữ liệu đầu vào bằng `class-validator` và `class-transformer` trong class DTO.
+   - Tách riêng DTO cho thao tác Tạo mới (`CreateExpenseDto`) và Cập nhật (`UpdateExpenseDto`).
+3. **Bảo mật & Bảo vệ API:**
+   - Bảo vệ các API yêu cầu đăng nhập bằng Custom Guard `@UseGuards(JwtAuthGuard)`.
+   - Lấy thông tin user đăng nhập từ request thông qua Decorator `@CurrentUser()` hoặc `@Req()`.
+4. **Đồng bộ Google Sheets:**
+   - Giữ `GoogleSheetsService` độc lập với logic xử lý chi tiêu chính.
+   - Luôn bọc lời gọi Google API trong khối `try/catch` (hoặc chạy bất đồng bộ) để nếu Google API lỗi hoặc bị timeout thì dữ liệu vẫn lưu vào Database bình thường, không làm nghẽn ứng dụng.
+5. **Cơ sở dữ liệu (Prisma & Migration):**
+   - Khi chạy trong Docker, tự động hoặc hỗ trợ command chạy `npx prisma migrate dev` / `npx prisma db push` để đồng bộ bảng vào PostgreSQL.
+
+---
+
+## Quy chuẩn Frontend (Next.js)
+1. **Cấu trúc App Router:**
+   - Tuân thủ cấu trúc thư mục của Next.js 14+ (`app/(auth)/login`, `app/(dashboard)/expenses`, v.v.).
+   - Mặc định dùng **Server Components (RSC)**. Chỉ thêm `'use client'` khi component có tương tác giao diện hoặc dùng React Hooks.
+2. **Form & Validate:**
+   - Sử dụng `react-hook-form` kết hợp với `zod` để xử lý form và validate dữ liệu.
+3. **Giao diện (UI):**
+   - Dùng Tailwind CSS và Shadcn UI. Thiết kế ưu tiên trải nghiệm trên điện thoại trước (Mobile-first).
+
+---
+
+## Yêu cầu Hành vi cho AI Assistant
+- Khi viết các file cấu hình Docker (`Dockerfile`, `docker-compose.yml`), luôn đính kèm giải thích ngắn gọn về cách chạy lệnh (`docker compose up --build`).
+- Khi viết code Backend, luôn tạo đồng thời file **DTO/Schema** và file **Service/Controller** tương ứng.
+- Khi tạo form nhập chi tiêu, tự động bao gồm các trường: `amount` (Số tiền - number), `category` (Danh mục - string/enum), `date` (Ngày - ISO Date), và `note` (Ghi chú - optional string).
+- Luôn dùng các tên biến môi trường chuẩn trong Docker/App: `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `GOOGLE_SHEET_ID`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`.
